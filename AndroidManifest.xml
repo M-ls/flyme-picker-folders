@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.codex.flymepicker"
-    android:versionCode="2"
-    android:versionName="0.1.1">
+    android:versionCode="3"
+    android:versionName="0.1.2">
     <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
     <application android:allowBackup="false" android:label="Flyme 相册目录">
         <meta-data android:name="xposedmodule" android:value="true" />

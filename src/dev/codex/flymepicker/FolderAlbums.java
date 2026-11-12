@@ -18,6 +18,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -37,8 +39,9 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class FolderAlbums implements IXposedHookLoadPackage {
-    private static final String PROVIDER_PACKAGE = "com.android.providers.media.module";
-    private static final String PICKER_PACKAGE = "com.android.providers.media.photopicker";
+    private static final String MEDIA_PACKAGE = "com.android.providers.media";
+    private static final String PROVIDER_PACKAGE = MEDIA_PACKAGE + ".module";
+    private static final String PICKER_PACKAGE = MEDIA_PACKAGE + ".photopicker";
     private static final String FOLDER_ID_PREFIX = "dev.codex.flymepicker.folder.v1:";
     private static final String PAGE_TOKEN = "android.provider.extra.PAGE_TOKEN";
     private static final String ALBUM_EXTRA = FolderAlbums.class.getName() + ".album";
@@ -96,24 +99,33 @@ public final class FolderAlbums implements IXposedHookLoadPackage {
         ProviderHooks(ClassLoader loader) throws ReflectiveOperationException {
             Class<?> facade = Class.forName(PICKER_PACKAGE + ".data.ExternalDbFacade", false, loader);
             Class<?> provider = Class.forName(PICKER_PACKAGE + ".PhotoPickerProvider", false, loader);
-            queryAlbums = method(facade, "queryAlbums", String[].class);
-            queryMedia = method(facade, "queryMedia", long.class, String.class, String[].class,
-                    int.class, String.class);
-            appendWhere = method(facade, "appendWhere", SQLiteQueryBuilder.class, String.class,
-                    String[].class);
-            createMediaQueryBuilder = method(facade, "createMediaQueryBuilder");
-            appendWhereStandalone = method(SQLiteQueryBuilder.class, "appendWhereStandalone",
-                    CharSequence.class);
-            databaseHelper = facade.getDeclaredField("mDatabaseHelper");
-            databaseHelper.setAccessible(true);
-            volumeCache = facade.getDeclaredField("mVolumeCache");
-            volumeCache.setAccessible(true);
-            runWithTransaction = method(databaseHelper.getType(), "runWithTransaction", Function.class);
-            volumePath = method(volumeCache.getType(), "getVolumePath", String.class, UserHandle.class);
-            albumProviderQuery = method(provider, "onQueryAlbums", Bundle.class);
-            mediaProviderQuery = method(provider, "onQueryMedia", Bundle.class);
-            mediaQueryBody = method(facade, "lambda$queryMedia$3", List.class, long.class, String.class,
-                    String.class, String[].class, String.class, int.class, SQLiteDatabase.class);
+            Class<?> database = Class.forName(MEDIA_PACKAGE + ".DatabaseHelper", false, loader);
+            Class<?> volumes = Class.forName(MEDIA_PACKAGE + ".VolumeCache", false, loader);
+            queryAlbums = uniqueMethod(facade, "album query", Cursor.class, false, String[].class);
+            queryMedia = uniqueMethod(facade, "media query", Cursor.class, false,
+                    long.class, String.class, String[].class, int.class, String.class);
+            appendWhere = uniqueMethod(facade, "media filters", List.class, true,
+                    SQLiteQueryBuilder.class, String.class, String[].class);
+            createMediaQueryBuilder = uniqueMethod(facade, "media query builder",
+                    SQLiteQueryBuilder.class, false);
+            databaseHelper = uniqueField(facade, database);
+            volumeCache = uniqueField(facade, volumes);
+            volumePath = uniqueMethod(volumes, "volume path", File.class, false,
+                    String.class, UserHandle.class);
+
+            // These names distinguish operations that share the same parameter and return types.
+            appendWhereStandalone = namedMethod(SQLiteQueryBuilder.class, "appendWhereStandalone",
+                    void.class, CharSequence.class);
+            runWithTransaction = namedMethod(database, "runWithTransaction", Object.class,
+                    Function.class);
+            albumProviderQuery = namedMethod(provider, "onQueryAlbums", Cursor.class, Bundle.class);
+            mediaProviderQuery = namedMethod(provider, "onQueryMedia", Cursor.class, Bundle.class);
+            Class<?>[] transactionArguments = {List.class, long.class, String.class, String.class,
+                    String[].class, String.class, int.class, SQLiteDatabase.class};
+            mediaQueryBody = uniqueMethod(facade, "media transaction", candidate ->
+                    candidate.isSynthetic() && !Modifier.isStatic(candidate.getModifiers())
+                            && candidate.getReturnType() == Cursor.class
+                            && Arrays.equals(candidate.getParameterTypes(), transactionArguments));
         }
 
         void install() throws ReflectiveOperationException {
@@ -175,7 +187,8 @@ public final class FolderAlbums implements IXposedHookLoadPackage {
                 }
                 throw error;
             }
-            XposedBridge.log("FlymeFolderAlbums: MediaProvider hooks installed");
+            XposedBridge.log("FlymeFolderAlbums: MediaProvider hooks installed, transaction="
+                    + mediaQueryBody.getName());
         }
 
         private void applyFolderFilter(XC_MethodHook.MethodHookParam param) {
@@ -541,11 +554,57 @@ public final class FolderAlbums implements IXposedHookLoadPackage {
         }
     }
 
-    private static Method method(Class<?> type, String name, Class<?>... arguments)
-            throws NoSuchMethodException {
-        Method method = type.getDeclaredMethod(name, arguments);
+    private static Method namedMethod(Class<?> owner, String name, Class<?> result,
+            Class<?>... arguments) throws NoSuchMethodException {
+        Method method = owner.getDeclaredMethod(name, arguments);
+        if (method.getReturnType() != result || Modifier.isStatic(method.getModifiers())) {
+            throw new NoSuchMethodException(owner.getName() + "." + name);
+        }
         method.setAccessible(true);
         return method;
+    }
+
+    private static Method uniqueMethod(Class<?> owner, String role, Class<?> result, boolean isStatic,
+            Class<?>... arguments) throws NoSuchMethodException {
+        return uniqueMethod(owner, role, candidate -> !candidate.isSynthetic()
+                && candidate.getReturnType() == result
+                && Modifier.isStatic(candidate.getModifiers()) == isStatic
+                && Arrays.equals(candidate.getParameterTypes(), arguments));
+    }
+
+    private static Method uniqueMethod(Class<?> owner, String role, Predicate<Method> matches)
+            throws NoSuchMethodException {
+        Method match = null;
+        for (Method candidate : owner.getDeclaredMethods()) {
+            if (matches.test(candidate)) {
+                if (match != null) {
+                    throw new NoSuchMethodException(owner.getName() + " has multiple matches for " + role);
+                }
+                match = candidate;
+            }
+        }
+        if (match == null) {
+            throw new NoSuchMethodException(owner.getName() + " has no match for " + role);
+        }
+        match.setAccessible(true);
+        return match;
+    }
+
+    private static Field uniqueField(Class<?> owner, Class<?> type) throws NoSuchFieldException {
+        Field match = null;
+        for (Field candidate : owner.getDeclaredFields()) {
+            if (candidate.getType() == type && !Modifier.isStatic(candidate.getModifiers())) {
+                if (match != null) {
+                    throw new NoSuchFieldException(owner.getName() + " has multiple fields of type " + type.getName());
+                }
+                match = candidate;
+            }
+        }
+        if (match == null) {
+            throw new NoSuchFieldException(owner.getName() + " has no field of type " + type.getName());
+        }
+        match.setAccessible(true);
+        return match;
     }
 
     private static boolean isFolderId(String id) {
