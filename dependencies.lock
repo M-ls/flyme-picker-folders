@@ -1,0 +1,6 @@
+# filename sha256 upstream [mirror]
+android.jar a0ad701eedd47bdaefbac1c2cc80dd400c0adea3cccd8a3ad286f79da1ca294c https://repo.maven.apache.org/maven2/org/robolectric/android-all/10-robolectric-5803371/android-all-10-robolectric-5803371.jar https://maven.aliyun.com/repository/public/org/robolectric/android-all/10-robolectric-5803371/android-all-10-robolectric-5803371.jar
+aapt2.jar 11ceee7c4306c1fa1249556e47e3820dec80ee6f64bb7f1c46828af45bf1ad7d https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.3.2-10880808/aapt2-8.3.2-10880808-linux.jar https://maven.aliyun.com/repository/google/com/android/tools/build/aapt2/8.3.2-10880808/aapt2-8.3.2-10880808-linux.jar
+r8.jar 59753e70a74f918389cc87f1b7d66b5c0862932559167425708ded159e3de439 https://dl.google.com/dl/android/maven2/com/android/tools/r8/8.3.37/r8-8.3.37.jar https://maven.aliyun.com/repository/google/com/android/tools/r8/8.3.37/r8-8.3.37.jar
+apksig.jar 468ee1852fa12461c6629608fe47be70e50f60be7c4744bb7f62ca48e85c0a6c https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.3.2/apksig-8.3.2.jar https://maven.aliyun.com/repository/google/com/android/tools/build/apksig/8.3.2/apksig-8.3.2.jar
+xposed-api-82.jar f48c635f1c7469fdec0e00ad2ea0b7a6b2f5b55065784a35b7ca3a84615e8e25 https://api.xposed.info/de/robv/android/xposed/api/82/api-82.jar
